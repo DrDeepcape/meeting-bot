@@ -1,6 +1,23 @@
-import { createApiV2 } from '../util/auth';
-import { BotStatus, IVFSResponse, LogCategory, LogSubCategory } from '../types';
-import config from '../config';
+/**
+ * Deepcape-fork: ScreenApp-backendin statuskutsut on stubattu no-opeiksi.
+ *
+ * Upstream lähettää botin tilan ja lokit ScreenAppin backendiin
+ * (`PATCH /meeting/app/bot/status` ja `/meeting/app/bot/log`). Deepcapen
+ * asennuksessa sitä backendiä ei ole: `AUTH_BASE_URL_V2` osoittaa olemattomaan
+ * porttiin, jolloin jokainen kutsu tuottaisi verkkovirheen ja `logger.error`-
+ * rivin. Tallennus toimisi silti, mutta lokit täyttyisivät virheistä joita
+ * kukaan ei voi korjata — ja aito vika hukkuisi kohinaan.
+ *
+ * Siksi kutsut eivät lähde lainkaan. Signatuurit, tyypit ja paluuarvot
+ * pidetään ennallaan, joten yksikään kutsupaikka ei muutu ja upstream-synkka
+ * pysyy halpana.
+ *
+ * Botin tila on Deepcapella näkyvissä bridgen kautta (webhook + portal), ei
+ * tämän rajapinnan kautta.
+ *
+ * Ks. deepcape-meta: knowledge-bank/design/design-2026-08-26-meeting-bot-* (MB-03)
+ */
+import { BotStatus, LogCategory, LogSubCategory } from '../types';
 import { Logger } from 'winston';
 
 export const patchBotStatus = async ({
@@ -8,36 +25,16 @@ export const patchBotStatus = async ({
   botId,
   provider,
   status,
-  token,
 }: {
     eventId?: string,
     token: string,
     botId?: string,
     provider: 'google' | 'microsoft' | 'zoom',
     status: BotStatus[],
-}, logger: Logger) => {
-  try {
-    const apiV2 = createApiV2(token, config.serviceKey);
-    const response = await apiV2.patch<
-        IVFSResponse<never>
-    >('/meeting/app/bot/status', {
-      eventId,
-      botId,
-      provider,
-      status,
-    });
-    return response.data.success;
-  } catch(e: any) {
-    logger.error('Can\'t update the bot status', {
-      error: e?.message || String(e),
-      status: e?.response?.status,
-      statusText: e?.response?.statusText,
-      responseData: e?.response?.data,
-      requestData: { eventId, botId, provider, status },
-      stack: e?.stack
-    });
-    return false;
-  }
+}, logger: Logger): Promise<boolean> => {
+  // No-op: ScreenApp-backendiä ei ole. Kirjataan debug-tasolle, ei error-tasolle.
+  logger.debug('patchBotStatus no-op (Deepcape-fork)', { eventId, botId, provider, status });
+  return true;
 };
 
 export const addBotLog = async ({
@@ -48,7 +45,6 @@ export const addBotLog = async ({
   message,
   category,
   subCategory,
-  token,
 }: {
     eventId?: string,
     token: string,
@@ -58,30 +54,8 @@ export const addBotLog = async ({
     message: string,
     category: LogCategory,
     subCategory: LogSubCategory<LogCategory>,
-}, logger: Logger) => {
-  try {
-    const apiV2 = createApiV2(token, config.serviceKey);
-    const response = await apiV2.patch<
-        IVFSResponse<never>
-    >('/meeting/app/bot/log', {
-      eventId,
-      botId,
-      provider,
-      level,
-      message,
-      category,
-      subCategory,
-    });
-    return response.data.success;
-  } catch(e: any) {
-    logger.error('Can\'t add the bot log', {
-      error: e?.message || String(e),
-      status: e?.response?.status,
-      statusText: e?.response?.statusText,
-      responseData: e?.response?.data,
-      requestData: { eventId, botId, provider, level, message, category, subCategory },
-      stack: e?.stack
-    });
-    return false;
-  }
+}, logger: Logger): Promise<boolean> => {
+  // No-op: ks. yllä. Botin oma winston-loki säilyttää viestin paikallisesti.
+  logger.debug('addBotLog no-op (Deepcape-fork)', { eventId, botId, provider, level, message, category, subCategory });
+  return true;
 };

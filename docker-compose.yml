@@ -17,7 +17,6 @@ services:
       - cache:/data
 
   meeting-bot:
-    platform: linux/amd64
     build:
       context: .
       dockerfile: Dockerfile.development
@@ -33,11 +32,12 @@ services:
       # the bot to another Redis — e.g. a local backend's queue so UI-triggered
       # jobs reach it: REDIS_HOST=host.docker.internal docker compose up
       - REDIS_HOST=${REDIS_HOST:-redis}
-      # Default to the bundled chrome-cdp sidecar so Google Meet joins use a real,
-      # signed-in-capable Chrome instead of the bot's in-container Chromium (which
-      # Google increasingly blocks). Set GOOGLE_CHROME_CDP_URL= (empty) to fall
-      # back to the in-container browser. See README.md (Usage → Join a Google Meet).
-      - GOOGLE_CHROME_CDP_URL=${GOOGLE_CHROME_CDP_URL-http://chrome-cdp:9223}
+      # Deepcape-fork: chrome-cdp-sidecar on poistettu (linux/amd64-only, ei
+      # rakennu arm64:lle). Sen korvaa hostilla ajettava oikea, kirjautunut
+      # Chrome, jonka start-chrome-cdp-mac.sh käynnistää loopback-CDP-portilla.
+      # Docker tavoittaa sen host.docker.internal-nimellä.
+      # Set GOOGLE_CHROME_CDP_URL= (empty) to fall back to the in-container browser.
+      - GOOGLE_CHROME_CDP_URL=${GOOGLE_CHROME_CDP_URL-http://host.docker.internal:9222}
     ports:
       - "3000:3000"
     volumes:
@@ -50,29 +50,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      chrome-cdp:
-        condition: service_healthy
-
-  # Real Google Chrome + Xvfb exposed over the Chrome DevTools Protocol, used by
-  # the Google Meet bot via GOOGLE_CHROME_CDP_URL. Port 9223 is an nginx proxy
-  # that rewrites the Host header so Playwright can drive Chrome's DevTools
-  # endpoint from another container (Chrome's raw 9222 is loopback-only and
-  # rejects cross-container Host headers). Kept on the internal compose network
-  # only — never publish the CDP port to the host. See README.md (Usage → Join a Google Meet).
-  chrome-cdp:
-    platform: linux/amd64
-    build:
-      context: .
-      dockerfile: Dockerfile.chrome-cdp
-    shm_size: "1gb"
-    expose:
-      - "9223"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9223/json/version"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
 
 volumes:
   cache:
