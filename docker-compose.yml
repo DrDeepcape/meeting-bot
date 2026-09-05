@@ -5,8 +5,11 @@ services:
     # can dodge another local Redis already using :6379:
     #   REDIS_PORT_HOST=6380 docker compose up
     # The bot itself always reaches Redis over the compose network as `redis:6379`.
+    #
+    # Deepcape-fork (#1789): loopback-sidonta. Redisillä ei ole salasanaa, joten
+    # tämä on sen ainoa este — älä poista prefiksiä lisäämättä requirepassia.
     ports:
-      - "${REDIS_PORT_HOST:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT_HOST:-6379}:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -23,6 +26,10 @@ services:
     # App config (storage provider, uploader, Azure/S3 creds, notifications, etc.)
     # is the source of truth in .env — copy .env.example -> .env. Only the values
     # that must differ inside the compose network are overridden in `environment`.
+    #
+    # Deepcape-fork (#1789): MEETING_BOT_AUTH_TOKEN tulee myös tätä kautta, eikä
+    # se saa esiintyä tässä tiedostossa — tämä on versionhallinnassa, .env ei ole.
+    # Ilman sitä join-reitit vastaavat 503:lla (fail-closed, ks. src/middleware/authGate.ts).
     env_file:
       - .env
     environment:
@@ -38,8 +45,13 @@ services:
       # Docker tavoittaa sen host.docker.internal-nimellä.
       # Set GOOGLE_CHROME_CDP_URL= (empty) to fall back to the in-container browser.
       - GOOGLE_CHROME_CDP_URL=${GOOGLE_CHROME_CDP_URL-http://host.docker.internal:9222}
+    # Deepcape-fork (#1787 E3 → #1789): sidonta on loopbackiin, EI 0.0.0.0:aan.
+    # Upstreamin "3000:3000" julkaisi rajapinnan kaikille verkkorajapinnoille;
+    # mitattuna se vastasi HTTP 200:lla M4:n Tailscale-osoitteesta ilman mitään
+    # autentikaatiota. Loopback on ensimmäinen kerros, authGate toinen — kumpikaan
+    # ei yksin riitä. Älä palauta muotoon "3000:3000".
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - .:/usr/src/app
       - ./.chrome:/usr/src/app/.chrome

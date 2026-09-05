@@ -5,3 +5,26 @@ dist
 .git
 .gitignore
 .vscode
+
+# Deepcape-fork (#1789): salaisuudet eivät saa leipoutua image-kerrokseen.
+# Dockerfile.development:64 ja Dockerfile.production:70 tekevät `COPY . .`, joten
+# ilman näitä rivejä .env:n S3-credentiaalit ja MEETING_BOT_AUTH_TOKEN päätyisivät
+# imageen — luettavissa `docker history`llä ja jokaiselle joka saa imagen.
+# Ajonaikana .env tulee compose-tiedoston `env_file`-kautta, k8s:ssä ympäristöstä,
+# joten mikään ei tarvitse sitä build-kontekstissa.
+.env
+.env.*
+!.env.example
+
+# Kirjautuneen Chromen istuntotila (.env.example:20-21). Tyhjä juuri nyt, mutta
+# jos sinne tulee sisältöä, se leipoutuisi imageen samalla tavalla.
+.chrome/
+
+# Ajonaikaiset artefaktit — mountataan volumeina, ei kuulu build-kontekstiin.
+assets/screenshots
+debug-videos
+
+# Varmuuskopiot (esim. docker-compose.yml.bak-20260903-1638). Git-historia on
+# varmuuskopio; nämä eivät kuulu imageen eivätkä repoon.
+*.bak
+*.bak-*
