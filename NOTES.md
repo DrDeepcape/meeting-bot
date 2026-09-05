@@ -25,12 +25,30 @@ ScreenApp-backendin irrotus vaativat:
 
 1. `docker-compose.yml`: `platform: linux/amd64` pois, `chrome-cdp`-sidecar pois
 2. `src/services/botService.ts`: ScreenApp-statuskutsut no-opeiksi
+3. `src/middleware/authGate.ts` + kytkentä `src/app/index.ts`:ään ja
+   `src/connect/RedisConsumerService.ts`:ään: fail-closed bearer-portti (MB-1789)
 
 **Kaikki Deepcape-äly on bridgen ja runnerin puolella** (`deepcape-portal`), ei täällä.
 Syy: upstream-synkan on pysyttävä halpana. Jokainen forkkiin lisätty rivi on rivi,
 joka konfliktoi seuraavassa upstream-mergessä.
 
 Jos olet lisäämässä ominaisuutta tähän repoon — älä. Se kuuluu bridgeen.
+
+### Miksi kohta 3 on poikkeus eikä sääntörikko
+
+**Luottamusraja ei ole ominaisuus:** ominaisuuden voi siirtää bridgeen, koska bridge
+on kutsuketjussa — luottamusrajan ei voi, koska raja on juuri se kohta jossa kutsuja
+voi olla joku muu kuin bridge.
+
+Botin portti on se raja. Bridgeen rakennettu tarkistus suojaisi vain bridgen omat
+kutsut ja jättäisi jokaisen muun `POST /google/join` -pyynnön vartioimatta — mikä on
+täsmälleen se vika joka mitattiin 3.9. (`curl` M4:n Tailscale-osoitteesta → HTTP 200,
+ei autentikaatiota; #1787 A5.1). Sama koskee `/debug`-reittiä, joka käynnistää
+selaimen, ja Redis-jonopolkua, joka on toinen sisääntulo samaan job storeen.
+
+Jalanjälki on siksi pidetty minimissä: yksi uusi tiedosto ja kolme mount-riviä.
+Upstreamin omiin käsittelijöihin ei ole koskettu, joten seuraava merge näkee
+lisäyksen eikä muutosta.
 
 ## Repokuri
 

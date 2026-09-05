@@ -20,3 +20,13 @@ debug-videos/
 compose.override.yml
 compose.override.yml.bak
 docker-compose.override.yml
+
+# Deepcape-fork (#1789): ajonaikaiset varmuuskopiot. docker-compose.yml.bak-* jäi
+# aiemmin tämän listan ulkopuolelle ja makasi repon juuressa — juuri sen muotoinen
+# tiedosto joka päätyy vahingossa committiin. Git-historia on varmuuskopio.
+*.bak
+*.bak-*
+
+# Salaisuustiedosto jos MEETING_BOT_AUTH_TOKEN_FILE osoittaa repon sisään.
+# Suositus on pitää se repon ULKOPUOLELLA; tämä on verkko sen varalta ettei ole.
+*.token

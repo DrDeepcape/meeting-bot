@@ -7,6 +7,7 @@ import microsoftRouter from './microsoft';
 import zoomRouter from './zoom';
 import { globalJobStore } from '../lib/globalJobStore';
 import { RedisConsumerService } from '../connect/RedisConsumerService';
+import { logAuthGateState, requireBearerToken } from '../middleware/authGate';
 
 const app = express();
 
@@ -53,7 +54,12 @@ app.get('/metrics', async (req, res) => {
   res.end(await client.register.metrics());
 });
 
-app.get('/debug', async (req, res, next) => {
+// Deepcape-fork: /debug käynnistää selaimen (test/debug.ts:11 createBrowserContext),
+// eli se on sama sivuvaikutusluokka kuin /join — ja se oli auki, ei vain teoriassa:
+// docker-compose.yml:29 asettaa NODE_ENV=development, joka yliajaa .env:n
+// production-arvon. Siksi portti on ENSIN ja NODE_ENV-tarkistus vasta sen jälkeen:
+// NODE_ENV on konfiguraatio, ei portti, eikä siitä saa tehdä ainoaa estettä.
+app.get('/debug', requireBearerToken, async (req, res, next) => {
   if (NODE_ENV === 'development') {
     next();
   }
@@ -65,9 +71,13 @@ app.get('/debug', async (req, res, next) => {
   res.status(200).send({});
 });
 
-app.use('/google', googleRouter);
-app.use('/microsoft', microsoftRouter);
-app.use('/zoom', zoomRouter);
+// Deepcape-fork: fail-closed bearer-portti. Mountattu routerien ETEEN, jolloin
+// yksikään join-käsittelijä ei ole tavoitettavissa portin ohi — hylkäys tapahtuu
+// ennen globalJobStore.addJob:ia ja ennen selaimen käynnistystä (#1789).
+// Upstream jätti bearerTokenin tarkistamatta; ks. middleware/authGate.ts.
+app.use('/google', requireBearerToken, googleRouter);
+app.use('/microsoft', requireBearerToken, microsoftRouter);
+app.use('/zoom', requireBearerToken, zoomRouter);
 
 export const setGracefulShutdown = (val: number) =>
   gracefulShutdown = val;
@@ -78,6 +88,10 @@ export const setIsBusy = (val: number) =>
   isbusy = val;
 
 export const getIsBusy = () => isbusy;
+
+// Deepcape-fork: kerro portin tila bootissa, jotta väärin konfiguroitu portti
+// näkyy ennen ensimmäistä pyyntöä eikä vasta sen jälkeen.
+logAuthGateState();
 
 // Start Redis consumer service only if Redis is enabled
 if (config.isRedisEnabled) {

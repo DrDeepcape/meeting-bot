@@ -10,6 +10,7 @@ import { JoinParams } from '../bots/AbstractMeetBot';
 import { MicrosoftTeamsBot } from '../bots/MicrosoftTeamsBot';
 import { ZoomBot } from '../bots/ZoomBot';
 import config from '../config';
+import { verifyBearerToken } from '../middleware/authGate';
 
 export class RedisConsumerService {
   private _isRunning: boolean = false;
@@ -124,6 +125,44 @@ export class RedisConsumerService {
     });
     const logger = loggerFactory(correlationId, meetingParams.provider);
     let jobAccepted = false;
+
+    // Deepcape-fork: sama fail-closed portti kuin HTTP-reiteillä (#1789). Jono on
+    // toinen tunnistamaton sisääntulo — kuka tahansa joka voi kirjoittaa Redisiin
+    // pystyi ajamaan botin mihin tahansa kokoukseen. REDIS_CONSUMER_ENABLED=false
+    // on konfiguraatio, ei portti: suojaus joka nojaa siihen että kytkin sattuu
+    // olemaan pois päältä ei ole suojaus.
+    //
+    // Tarkistus on ENNEN try-lohkoa tarkoituksella. Lohkon catch palauttaa viestin
+    // pending-jonoon, mikä tekisi hylätystä viestistä kuuman silmukan; tässä sitä
+    // ei koskaan palauteta. Ja ennen addJob:ia, eli ennen uploaderia ja selainta.
+    const auth = verifyBearerToken(meetingParams.bearerToken);
+    if (!auth.ok) {
+      const ctx = {
+        provider: meetingParams.provider,
+        teamId: meetingParams.teamId,
+        userId: meetingParams.userId,
+        botId: meetingParams.botId,
+        eventId: meetingParams.eventId,
+      };
+
+      if (auth.reason === 'unconfigured') {
+        // Palvelinvika, ei viallinen työ. Viesti jätetään processing-jonoon
+        // talteen: mitään ei hukata, mitään ei myöskään ajeta.
+        logger.error(
+          'Redis job REFUSED — auth gate is not configured; job left in processing queue',
+          { detail: auth.detail, ...ctx }
+        );
+        return;
+      }
+
+      // Myrkkyviesti: kuitataan pois, ettei se jää kiertämään jonoon.
+      logger.warn(
+        'Redis job REJECTED — invalid or missing bearer token; removing from processing queue',
+        { reason: auth.reason, ...ctx }
+      );
+      await messageBroker.acknowledgeProcessingMeetingbotJob(message);
+      return;
+    }
 
     try {
       logger.info('Processing Redis message:', {
