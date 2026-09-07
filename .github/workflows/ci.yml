@@ -1,0 +1,61 @@
+name: CI (light check)
+
+# Kevyt PR-portti forkille (deepcape-portal#1840).
+#
+# MIKSI: docker-build.yml rakentaa koko tuotanto-imagen (amd64) joka PR:llä —
+# raskas portiksi. Tämä workflow ajaa nopeat, riippuvuudettomat tarkistukset
+# jotka kaatavat PR:n ENNEN mergeä jos koodi ei käänny tai forkin auth-portti
+# rikkoutuu. Docker-build jää rinnalle image-buildia varten.
+#
+# HUOM: forkin Actions vaatii kertaluontoisen ihmishyväksynnän Actions-
+# välilehdeltä ("I understand my workflows, go ahead and enable them") ennen
+# kuin MIKÄÄN workflow (tämä tai olemassa olevat) laukeaa. Se on ihmis-UI-toimi
+# jota mikään repossa oleva tiedosto ei ohjaa (deepcape-portal#1840).
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node 20 — sama kuin Dockerfile.production (FROM node:20). typescript ei
+      # ole suorana riippuvuutena vaan tulee ts-noden peer-depinä npm ci:ssä,
+      # joten `npm run build` (tsc) toimii samoin kuin tuotanto-buildissa.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Blokkaava: TypeScript-käännös (tyyppitarkistus).
+      - name: Build (tsc)
+        run: npm run build
+
+      # Blokkaava: forkin auth-portin invariantti (MB-1789). Ajaa oikeaa
+      # express-pinoa vasten, 47 assertiota, ei mockeja. Tämä on forkin tärkein
+      # portti — fail-closed bearer-tarkistus ei saa hiljaa rikkoutua.
+      - name: Auth-gate test
+        run: npm run test:auth
+
+      # Informatiivinen (ei blokkaava): eslint ilman --fixiä. Ei portiksi vielä,
+      # koska upstreamin oma koodi (src/bots/MicrosoftTeamsBot.ts) rikkoo
+      # quotes-sääntöä (mitattu 5.9.2026: 4 virhettä, heittomerkilliset
+      # merkkijonot lainausmerkeissä). `npm run lint` ajaa --fixillä eikä siksi
+      # näytä niitä. Blokkaava eslint punertaisi PR:n muuttamattomasta
+      # upstream-koodista — vastoin forkin minimijalanjälkikuria. Nostetaan
+      # portiksi kun upstream korjaa tai jaettu .eslintrc saa avoidEscapen.
+      - name: Lint (eslint, informational)
+        continue-on-error: true
+        run: npx eslint "*/**/*.{js,ts}" --quiet
